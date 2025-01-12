@@ -40,7 +40,44 @@ function addPreviewStyles() {
       left: 0;
       width: 100%;
       height: 100%;
-      pointer-events: none;
+      pointer-events: none; /* 默认不接受事件 */
+    }
+    
+    .preview-canvas.adjustable {
+      pointer-events: auto; /* 自动识别模式下允许交互 */
+      cursor: default;
+    }
+    
+    .preview-canvas.adjustable.vertical-resize {
+      cursor: col-resize; /* 垂直线调整时的光标 */
+    }
+    
+    .preview-canvas.adjustable.horizontal-resize {
+      cursor: row-resize; /* 水平线调整时的光标 */
+    }
+    
+    .guide-line {
+      position: absolute;
+      background: rgba(255, 64, 129, 0.5);
+      transition: background 0.3s;
+    }
+    
+    .guide-line:hover {
+      background: rgba(255, 64, 129, 0.8);
+    }
+    
+    .guide-line.vertical {
+      width: 4px;
+      height: 100%;
+      cursor: col-resize;
+      margin-left: -2px;
+    }
+    
+    .guide-line.horizontal {
+      height: 4px;
+      width: 100%;
+      cursor: row-resize;
+      margin-top: -2px;
     }
   `;
   document.head.appendChild(style);
@@ -140,6 +177,141 @@ function autoDetectSlices(image) {
   };
 }
 
+// 添加可调整的切割线类
+class AdjustableGuideLines {
+  constructor(container, options) {
+    this.container = container;
+    this.options = options;
+    this.lines = new Map(); // 存储所有切割线
+    this.activeLines = null; // 当前可调整的切割线集合
+    this.scale = options.scale;
+    this.offset = options.offset;
+    
+    this.onLineMove = options.onLineMove || (() => {});
+  }
+
+  // 创建切割线
+  createLine(position, isVertical) {
+    const line = document.createElement('div');
+    line.className = `guide-line ${isVertical ? 'vertical' : 'horizontal'}`;
+    
+    const displayPos = this.getDisplayPosition(position, isVertical);
+    if (isVertical) {
+      line.style.left = `${displayPos}px`;
+    } else {
+      line.style.top = `${displayPos}px`;
+    }
+
+    this.makeDraggable(line, isVertical);
+    return line;
+  }
+
+  // 计算显示位置
+  getDisplayPosition(position, isVertical) {
+    return this.offset[isVertical ? 'x' : 'y'] + position * this.scale;
+  }
+
+  // 从显示位置计算实际位置
+  getRealPosition(displayPos, isVertical) {
+    return (displayPos - this.offset[isVertical ? 'x' : 'y']) / this.scale;
+  }
+
+  // 使切割线可拖动
+  makeDraggable(line, isVertical) {
+    let startPos = 0;
+    let originalPos = 0;
+
+    const onMouseDown = (e) => {
+      e.preventDefault();
+      startPos = isVertical ? e.clientX : e.clientY;
+      originalPos = parseInt(isVertical ? line.style.left : line.style.top);
+      
+      document.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('mouseup', onMouseUp);
+    };
+
+    const onMouseMove = (e) => {
+      const currentPos = isVertical ? e.clientX : e.clientY;
+      const delta = currentPos - startPos;
+      const newPos = originalPos + delta;
+      
+      // 限制移动范围
+      const containerRect = this.container.getBoundingClientRect();
+      const min = isVertical ? this.offset.x : this.offset.y;
+      const max = isVertical ? 
+        containerRect.width - this.offset.x : 
+        containerRect.height - this.offset.y;
+      
+      const limitedPos = Math.max(min, Math.min(newPos, max));
+      
+      if (isVertical) {
+        line.style.left = `${limitedPos}px`;
+      } else {
+        line.style.top = `${limitedPos}px`;
+      }
+
+      // 触发移动回调
+      const realPos = this.getRealPosition(limitedPos, isVertical);
+      this.onLineMove(realPos, isVertical);
+    };
+
+    const onMouseUp = () => {
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+    };
+
+    line.addEventListener('mousedown', onMouseDown);
+  }
+
+  // 更新切割线
+  updateLines(verticalLines, horizontalLines) {
+    // 清除现有的切割线
+    this.clearLines();
+    
+    // 添加新的切割线
+    verticalLines.forEach(pos => {
+      const line = this.createLine(pos, true);
+      this.container.appendChild(line);
+      this.lines.set(line, { position: pos, isVertical: true });
+    });
+
+    horizontalLines.forEach(pos => {
+      const line = this.createLine(pos, false);
+      this.container.appendChild(line);
+      this.lines.set(line, { position: pos, isVertical: false });
+    });
+  }
+
+  // 清除所有切割线
+  clearLines() {
+    this.lines.forEach((_, line) => line.remove());
+    this.lines.clear();
+  }
+
+  // 获取当前切割线位置
+  getLinePositions() {
+    const vertical = [];
+    const horizontal = [];
+    
+    this.lines.forEach((info, line) => {
+      const pos = this.getRealPosition(
+        parseInt(info.isVertical ? line.style.left : line.style.top),
+        info.isVertical
+      );
+      if (info.isVertical) {
+        vertical.push(pos);
+      } else {
+        horizontal.push(pos);
+      }
+    });
+
+    return {
+      vertical: vertical.sort((a, b) => a - b),
+      horizontal: horizontal.sort((a, b) => a - b)
+    };
+  }
+}
+
 document.addEventListener('DOMContentLoaded', function() {
   const dropZone = document.getElementById('dropZone');
   const fileInput = document.getElementById('fileInput');
@@ -201,39 +373,9 @@ document.addEventListener('DOMContentLoaded', function() {
     
     clearPreview();
 
-    const canvas = document.createElement('canvas');
-    canvas.className = 'preview-canvas';
     const imageContainer = document.querySelector('.image-container');
-    
     const rect = imageContainer.getBoundingClientRect();
-    canvas.width = rect.width;
-    canvas.height = rect.height;
     
-    const ctx = canvas.getContext('2d');
-    
-    // 获取切割参数
-    let rows, cols, slices, horizontalLines, verticalLines;
-    
-    if (sliceMode.value === 'auto') {
-      const result = autoDetectSlices(currentImage);
-      rows = result.rows;
-      cols = result.cols;
-      slices = result.slices;
-      horizontalLines = result.horizontalLines;
-      verticalLines = result.verticalLines;
-    } else {
-      // 原有的均匀切割和自定义尺寸逻辑
-      if (sliceMode.value === 'uniform') {
-        rows = parseInt(document.getElementById('rows').value);
-        cols = parseInt(document.getElementById('cols').value);
-      } else {
-        sliceWidth = parseInt(document.getElementById('sliceWidth').value);
-        sliceHeight = parseInt(document.getElementById('sliceHeight').value);
-        rows = Math.ceil(currentImage.height / sliceHeight);
-        cols = Math.ceil(currentImage.width / sliceWidth);
-      }
-    }
-
     // 计算预览图片的实际显示尺寸和位置
     const previewRect = preview.getBoundingClientRect();
     const scale = Math.min(
@@ -246,6 +388,41 @@ document.addEventListener('DOMContentLoaded', function() {
     
     const offsetX = (rect.width - displayWidth) / 2;
     const offsetY = (rect.height - displayHeight) / 2;
+
+    if (sliceMode.value === 'auto') {
+      const result = autoDetectSlices(currentImage);
+      
+      // 创建可调整的切割线
+      const guideLines = new AdjustableGuideLines(imageContainer, {
+        scale: scale,
+        offset: { x: offsetX, y: offsetY },
+        onLineMove: (position, isVertical) => {
+          // 当切割线移动时更新切片信息
+          const positions = guideLines.getLinePositions();
+          updateSlicePreview(positions.vertical, positions.horizontal);
+        }
+      });
+
+      // 添加切割线
+      guideLines.updateLines(
+        result.verticalLines.slice(1, -1), // 排除边界线
+        result.horizontalLines.slice(1, -1)
+      );
+
+      // 保存引用以便后续使用
+      imageContainer.guideLines = guideLines;
+    } else {
+      // 原有的均匀切割和自定义尺寸逻辑
+      if (sliceMode.value === 'uniform') {
+        rows = parseInt(document.getElementById('rows').value);
+        cols = parseInt(document.getElementById('cols').value);
+      } else {
+        sliceWidth = parseInt(document.getElementById('sliceWidth').value);
+        sliceHeight = parseInt(document.getElementById('sliceHeight').value);
+        rows = Math.ceil(currentImage.height / sliceHeight);
+        cols = Math.ceil(currentImage.width / sliceWidth);
+      }
+    }
 
     // 绘制网格
     ctx.strokeStyle = '#FF4081';
@@ -351,19 +528,56 @@ document.addEventListener('DOMContentLoaded', function() {
     tempImage.src = objectUrl;
   }
 
-  // 切割图片
+  // 添加计算切片的函数
+  function calculateSlices(verticalLines, horizontalLines) {
+    // 确保边界线存在
+    if (!verticalLines.includes(0)) verticalLines.unshift(0);
+    if (!verticalLines.includes(currentImage.width)) verticalLines.push(currentImage.width);
+    if (!horizontalLines.includes(0)) horizontalLines.unshift(0);
+    if (!horizontalLines.includes(currentImage.height)) horizontalLines.push(currentImage.height);
+
+    // 排序确保顺序
+    verticalLines.sort((a, b) => a - b);
+    horizontalLines.sort((a, b) => a - b);
+
+    const slices = [];
+    for (let i = 0; i < horizontalLines.length - 1; i++) {
+      for (let j = 0; j < verticalLines.length - 1; j++) {
+        const x = verticalLines[j];
+        const y = horizontalLines[i];
+        const width = verticalLines[j + 1] - x;
+        const height = horizontalLines[i + 1] - y;
+        
+        // 忽略太小的切片
+        if (width < 10 || height < 10) continue;
+        
+        slices.push({ x, y, width, height });
+      }
+    }
+    return slices;
+  }
+
+  // 修改切割图片函数
   function sliceImage() {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
-    
-    let slices;
-    
+    let slices = [];
+
     if (sliceMode.value === 'auto') {
-      const result = autoDetectSlices(currentImage);
-      slices = result.slices;
+      const imageContainer = document.querySelector('.image-container');
+      if (imageContainer.guideLines) {
+        const positions = imageContainer.guideLines.getLinePositions();
+        slices = calculateSlices(
+          positions.vertical,
+          positions.horizontal
+        );
+      } else {
+        // 如果没有引导线，使用自动检测的结果
+        const result = autoDetectSlices(currentImage);
+        slices = result.slices;
+      }
     } else {
-      // 原有的均匀切割和自定义尺寸逻辑
-      slices = [];
+      // 均匀切割或自定义尺寸的逻辑
       let rows, cols, sliceWidth, sliceHeight;
       
       if (sliceMode.value === 'uniform') {
@@ -380,19 +594,32 @@ document.addEventListener('DOMContentLoaded', function() {
 
       for (let i = 0; i < rows; i++) {
         for (let j = 0; j < cols; j++) {
-          slices.push({
-            x: j * sliceWidth,
-            y: i * sliceHeight,
-            width: sliceWidth,
-            height: sliceHeight
-          });
+          const x = j * sliceWidth;
+          const y = i * sliceHeight;
+          const width = Math.min(sliceWidth, currentImage.width - x);
+          const height = Math.min(sliceHeight, currentImage.height - y);
+          
+          if (width < 10 || height < 10) continue;
+          
+          slices.push({ x, y, width, height });
         }
       }
     }
 
+    // 如果没有切片，显示错误
+    if (slices.length === 0) {
+      showMessage('没有找到有效的切片', true);
+      return;
+    }
+
     // 创建zip文件
     const zip = new JSZip();
+    let processedCount = 0;
 
+    // 显示进度信息
+    showMessage(`开始处理 ${slices.length} 个切片...`);
+
+    // 处理每个切片
     slices.forEach((slice, index) => {
       canvas.width = slice.width;
       canvas.height = slice.height;
@@ -409,18 +636,26 @@ document.addEventListener('DOMContentLoaded', function() {
       const base64Data = dataUrl.replace(/^data:image\/png;base64,/, "");
       
       zip.file(`slice_${index + 1}.png`, base64Data, {base64: true});
-    });
-
-    // 下载zip文件
-    zip.generateAsync({type:"blob"}).then(function(content) {
-      const url = URL.createObjectURL(content);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'sliced_images.zip';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      
+      processedCount++;
+      if (processedCount === slices.length) {
+        // 所有切片处理完成，生成并下载zip
+        zip.generateAsync({type: "blob"})
+          .then(function(content) {
+            const url = URL.createObjectURL(content);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'sliced_images.zip';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            showMessage('切割完成！');
+          })
+          .catch(function(error) {
+            showMessage('生成zip文件时出错：' + error.message, true);
+          });
+      }
     });
   }
 
@@ -461,3 +696,31 @@ document.addEventListener('DOMContentLoaded', function() {
 
   addPreviewStyles();
 }); 
+
+function updateSlicePreview(verticalLines, horizontalLines) {
+  // 更新切片信息
+  const slices = [];
+  
+  // 添加图片边界
+  verticalLines.unshift(0);
+  verticalLines.push(currentImage.width);
+  horizontalLines.unshift(0);
+  horizontalLines.push(currentImage.height);
+
+  // 计算切片
+  for (let i = 0; i < horizontalLines.length - 1; i++) {
+    for (let j = 0; j < verticalLines.length - 1; j++) {
+      const x = verticalLines[j];
+      const y = horizontalLines[i];
+      const width = verticalLines[j + 1] - x;
+      const height = horizontalLines[i + 1] - y;
+      
+      if (width < 10 || height < 10) continue;
+      
+      slices.push({ x, y, width, height });
+    }
+  }
+
+  // 更新提示信息
+  showMessage(`当前切割方案：${slices.length} 个切片`);
+} 
