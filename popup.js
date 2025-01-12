@@ -44,28 +44,6 @@ function showImageInfo(image) {
 function addPreviewStyles() {
   const style = document.createElement('style');
   style.textContent = `
-    .preview-canvas {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      pointer-events: none; /* 默认不接受事件 */
-    }
-    
-    .preview-canvas.adjustable {
-      pointer-events: auto; /* 自动识别模式下允许交互 */
-      cursor: default;
-    }
-    
-    .preview-canvas.adjustable.vertical-resize {
-      cursor: col-resize; /* 垂直线调整时的光标 */
-    }
-    
-    .preview-canvas.adjustable.horizontal-resize {
-      cursor: row-resize; /* 水平线调整时的光标 */
-    }
-    
     .guide-line {
       position: absolute;
       background: rgba(255, 64, 129, 0.5);
@@ -78,16 +56,14 @@ function addPreviewStyles() {
     
     .guide-line.vertical {
       width: 4px;
-      height: 100%;
-      cursor: col-resize;
       margin-left: -2px;
+      cursor: col-resize;
     }
     
     .guide-line.horizontal {
       height: 4px;
-      width: 100%;
-      cursor: row-resize;
       margin-top: -2px;
+      cursor: row-resize;
     }
   `;
   document.head.appendChild(style);
@@ -192,11 +168,9 @@ class AdjustableGuideLines {
   constructor(container, options) {
     this.container = container;
     this.options = options;
-    this.lines = new Map(); // 存储所有切割线
-    this.activeLines = null; // 当前可调整的切割线集合
+    this.lines = new Map();
     this.scale = options.scale;
     this.offset = options.offset;
-    
     this.onLineMove = options.onLineMove || (() => {});
   }
 
@@ -206,10 +180,15 @@ class AdjustableGuideLines {
     line.className = `guide-line ${isVertical ? 'vertical' : 'horizontal'}`;
     
     const displayPos = this.getDisplayPosition(position, isVertical);
+    
     if (isVertical) {
       line.style.left = `${displayPos}px`;
+      line.style.top = `${this.offset.y}px`;
+      line.style.height = `${currentImage.height * this.scale}px`;
     } else {
       line.style.top = `${displayPos}px`;
+      line.style.left = `${this.offset.x}px`;
+      line.style.width = `${currentImage.width * this.scale}px`;
     }
 
     this.makeDraggable(line, isVertical);
@@ -287,10 +266,14 @@ class AdjustableGuideLines {
 
   // 更新切割线
   updateLines(verticalLines, horizontalLines) {
-    // 清除现有的切割线
     this.clearLines();
     
-    // 添加新的切割线
+    // 添加边界线
+    verticalLines.unshift(0);
+    verticalLines.push(currentImage.width);
+    horizontalLines.unshift(0);
+    horizontalLines.push(currentImage.height);
+
     verticalLines.forEach(pos => {
       const line = this.createLine(pos, true);
       this.container.appendChild(line);
