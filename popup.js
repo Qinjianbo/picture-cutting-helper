@@ -390,6 +390,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const offsetY = (rect.height - displayHeight) / 2;
 
     if (sliceMode.value === 'auto') {
+      // 自动识别模式
       const result = autoDetectSlices(currentImage);
       
       // 创建可调整的切割线
@@ -411,59 +412,57 @@ document.addEventListener('DOMContentLoaded', function() {
 
       // 保存引用以便后续使用
       imageContainer.guideLines = guideLines;
+
+      // 显示切片信息
+      showMessage(`自动识别到 ${result.slices.length} 个切片`);
     } else {
-      // 原有的均匀切割和自定义尺寸逻辑
+      // 均匀切割和自定义尺寸的预览逻辑
+      let rows, cols;
       if (sliceMode.value === 'uniform') {
+        // 均匀切割模式
         rows = parseInt(document.getElementById('rows').value);
         cols = parseInt(document.getElementById('cols').value);
       } else {
-        sliceWidth = parseInt(document.getElementById('sliceWidth').value);
-        sliceHeight = parseInt(document.getElementById('sliceHeight').value);
+        // 自定义尺寸模式
+        const sliceWidth = parseInt(document.getElementById('sliceWidth').value);
+        const sliceHeight = parseInt(document.getElementById('sliceHeight').value);
         rows = Math.ceil(currentImage.height / sliceHeight);
         cols = Math.ceil(currentImage.width / sliceWidth);
       }
-    }
 
-    // 绘制网格
-    ctx.strokeStyle = '#FF4081';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
+      // 创建预览画布
+      const canvas = document.createElement('canvas');
+      canvas.className = 'preview-canvas';
+      canvas.width = rect.width;
+      canvas.height = rect.height;
+      const ctx = canvas.getContext('2d');
 
-    if (sliceMode.value === 'auto') {
-      // 绘制自动识别的切割线
-      verticalLines.forEach(x => {
-        const displayX = offsetX + x * scale;
-        ctx.moveTo(displayX, offsetY);
-        ctx.lineTo(displayX, offsetY + displayHeight);
-      });
+      // 设置切割线样式
+      ctx.strokeStyle = '#FF4081';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
 
-      horizontalLines.forEach(y => {
-        const displayY = offsetY + y * scale;
-        ctx.moveTo(offsetX, displayY);
-        ctx.lineTo(offsetX + displayWidth, displayY);
-      });
-    } else {
-      // 原有的均匀网格绘制逻辑
+      // 绘制垂直线
       for (let i = 1; i < cols; i++) {
         const x = offsetX + (displayWidth / cols) * i;
         ctx.moveTo(x, offsetY);
         ctx.lineTo(x, offsetY + displayHeight);
       }
 
+      // 绘制水平线
       for (let i = 1; i < rows; i++) {
         const y = offsetY + (displayHeight / rows) * i;
         ctx.moveTo(offsetX, y);
         ctx.lineTo(offsetX + displayWidth, y);
       }
-    }
 
-    ctx.stroke();
-    imageContainer.appendChild(canvas);
+      // 完成绘制
+      ctx.stroke();
 
-    // 显示切割信息
-    if (sliceMode.value === 'auto') {
-      showMessage(`自动识别到 ${slices.length} 个切片`);
-    } else {
+      // 添加画布到容器
+      imageContainer.appendChild(canvas);
+
+      // 显示切割信息
       showMessage(`将被切割成 ${rows}×${cols} = ${rows * cols} 张图片`);
     }
   });
@@ -496,15 +495,13 @@ document.addEventListener('DOMContentLoaded', function() {
     const tempImage = new Image();
     
     tempImage.onload = () => {
-      // 保存当前图片对象
       currentImage = tempImage;
-      
-      // 设置预览
       preview.src = objectUrl;
       preview.hidden = false;
       dropZone.hidden = true;
       
-      // 显示图片信息
+      document.querySelector('.image-container').classList.add('has-image');
+      
       showImageInfo({
         width: tempImage.width,
         height: tempImage.height,
@@ -512,8 +509,6 @@ document.addEventListener('DOMContentLoaded', function() {
       });
       
       showMessage('图片上传成功！');
-      
-      // 启用按钮
       previewBtn.disabled = false;
       sliceBtn.disabled = false;
     };
@@ -672,11 +667,11 @@ document.addEventListener('DOMContentLoaded', function() {
     dropZone.classList.remove('dragover');
     fileInput.value = '';
     
-    // 禁用按钮
+    document.querySelector('.image-container').classList.remove('has-image');
+    
     previewBtn.disabled = true;
     sliceBtn.disabled = true;
     
-    // 移除图片信息
     const imageInfo = document.querySelector('.image-info');
     if (imageInfo) {
       imageInfo.remove();
