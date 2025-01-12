@@ -375,6 +375,16 @@ document.addEventListener('DOMContentLoaded', function() {
   sliceMode.addEventListener('change', () => {
     const autoTip = document.getElementById('autoTip');
     
+    // 清除预览效果
+    clearPreview();
+    
+    // 清除自动识别模式的切割线
+    const imageContainer = document.querySelector('.image-container');
+    if (imageContainer.guideLines) {
+      imageContainer.guideLines.clearLines();
+      delete imageContainer.guideLines;
+    }
+    
     if (sliceMode.value === 'auto') {
       // 自动识别模式：隐藏所有参数输入，显示提示
       uniformControls.hidden = true;
@@ -386,7 +396,6 @@ document.addEventListener('DOMContentLoaded', function() {
       customControls.hidden = sliceMode.value === 'uniform';
       autoTip.hidden = true;
     }
-    clearPreview();
   });
 
   // 预览按钮
@@ -441,11 +450,9 @@ document.addEventListener('DOMContentLoaded', function() {
       // 均匀切割和自定义尺寸的预览逻辑
       let rows, cols;
       if (sliceMode.value === 'uniform') {
-        // 均匀切割模式
         rows = parseInt(document.getElementById('rows').value);
         cols = parseInt(document.getElementById('cols').value);
       } else {
-        // 自定义尺寸模式
         const sliceWidth = parseInt(document.getElementById('sliceWidth').value);
         const sliceHeight = parseInt(document.getElementById('sliceHeight').value);
         rows = Math.ceil(currentImage.height / sliceHeight);
@@ -462,7 +469,12 @@ document.addEventListener('DOMContentLoaded', function() {
       // 设置切割线样式
       ctx.strokeStyle = '#FF4081';
       ctx.lineWidth = 1;
+
+      // 限制绘制区域到图片范围内
+      ctx.save();
       ctx.beginPath();
+      ctx.rect(offsetX, offsetY, displayWidth, displayHeight);
+      ctx.clip();
 
       // 绘制垂直线
       for (let i = 1; i < cols; i++) {
@@ -480,6 +492,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
       // 完成绘制
       ctx.stroke();
+      ctx.restore();
 
       // 添加画布到容器
       imageContainer.appendChild(canvas);
