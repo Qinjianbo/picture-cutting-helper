@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "切图助手",
+  "version": "1.0",
+  "description": "一键将图片切割成多个小图片",
+  "permissions": [
+    "downloads",
+    "clipboardRead"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "images/icon16.png",
+      "48": "images/icon48.png",
+      "128": "images/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "images/icon16.png",
+    "48": "images/icon48.png",
+    "128": "images/icon128.png"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  }
+} 
