@@ -117,28 +117,37 @@ select {
 }
 
 .message {
-  padding: 10px;
-  margin: 10px 0;
-  border-radius: 4px;
+  padding: 10px 16px;
+  margin: 0 auto 8px;
+  border-radius: 6px;
   text-align: center;
-  animation: fadeIn 0.3s;
+  animation: slideInDown 0.3s ease;
+  font-size: 14px;
+  background: white;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
 
 .message.success {
-  background-color: #e8f5e9;
+  background-color: #f0f9f4;
   color: #2e7d32;
   border: 1px solid #a5d6a7;
 }
 
 .message.error {
-  background-color: #ffebee;
-  color: #c62828;
-  border: 1px solid #ffcdd2;
+  background-color: #fef2f2;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
 }
 
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+@keyframes slideInDown {
+  from {
+    transform: translateY(-20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }
 
 .image-info {
@@ -193,4 +202,15 @@ select {
   height: 100%;
   pointer-events: none;
   z-index: 1;
+}
+
+.message-container {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 90%;
+  max-width: 360px;
+  z-index: 1000;
+  pointer-events: none;
 } 

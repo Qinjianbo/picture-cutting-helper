@@ -1,17 +1,27 @@
 let currentImage = null;
 
 function showMessage(message, isError = false) {
-  const existingMsg = document.querySelector('.message');
-  if (existingMsg) {
-    existingMsg.remove();
+  // 确保存在消息容器
+  let messageContainer = document.querySelector('.message-container');
+  if (!messageContainer) {
+    messageContainer = document.createElement('div');
+    messageContainer.className = 'message-container';
+    document.body.appendChild(messageContainer);
   }
 
   const msgDiv = document.createElement('div');
   msgDiv.className = `message ${isError ? 'error' : 'success'}`;
   msgDiv.textContent = message;
-  document.querySelector('.container').insertBefore(msgDiv, document.querySelector('.controls'));
+  messageContainer.appendChild(msgDiv);
   
-  setTimeout(() => msgDiv.remove(), 3000);
+  // 自动移除消息
+  setTimeout(() => {
+    msgDiv.style.opacity = '0';
+    msgDiv.style.transform = 'translateY(-20px)';
+    msgDiv.style.transition = 'all 0.3s ease';
+    
+    setTimeout(() => msgDiv.remove(), 300);
+  }, 3000);
 }
 
 // 添加图片信息显示功能
@@ -220,6 +230,7 @@ class AdjustableGuideLines {
   makeDraggable(line, isVertical) {
     let startPos = 0;
     let originalPos = 0;
+    let moveTimer = null; // 添加防抖定时器
 
     const onMouseDown = (e) => {
       e.preventDefault();
@@ -250,14 +261,25 @@ class AdjustableGuideLines {
         line.style.top = `${limitedPos}px`;
       }
 
-      // 触发移动回调
-      const realPos = this.getRealPosition(limitedPos, isVertical);
-      this.onLineMove(realPos, isVertical);
+      // 使用防抖处理更新
+      if (moveTimer) clearTimeout(moveTimer);
+      moveTimer = setTimeout(() => {
+        const realPos = this.getRealPosition(limitedPos, isVertical);
+        this.onLineMove(realPos, isVertical);
+      }, 100); // 100ms 的防抖延迟
     };
 
     const onMouseUp = () => {
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
+      
+      // 确保最后一次更新一定会执行
+      if (moveTimer) {
+        clearTimeout(moveTimer);
+        const limitedPos = parseInt(isVertical ? line.style.left : line.style.top);
+        const realPos = this.getRealPosition(limitedPos, isVertical);
+        this.onLineMove(realPos, isVertical);
+      }
     };
 
     line.addEventListener('mousedown', onMouseDown);
@@ -690,32 +712,49 @@ document.addEventListener('DOMContentLoaded', function() {
   sliceBtn.disabled = true;
 
   addPreviewStyles();
+
+  // 初始化时显示自动识别模式的提示
+  const autoTip = document.getElementById('autoTip');
+  uniformControls.hidden = true;
+  customControls.hidden = true;
+  autoTip.hidden = false;
 }); 
 
-function updateSlicePreview(verticalLines, horizontalLines) {
-  // 更新切片信息
-  const slices = [];
-  
-  // 添加图片边界
-  verticalLines.unshift(0);
-  verticalLines.push(currentImage.width);
-  horizontalLines.unshift(0);
-  horizontalLines.push(currentImage.height);
+// 添加一个防抖函数
+let updatePreviewTimer = null;
 
-  // 计算切片
-  for (let i = 0; i < horizontalLines.length - 1; i++) {
-    for (let j = 0; j < verticalLines.length - 1; j++) {
-      const x = verticalLines[j];
-      const y = horizontalLines[i];
-      const width = verticalLines[j + 1] - x;
-      const height = horizontalLines[i + 1] - y;
-      
-      if (width < 10 || height < 10) continue;
-      
-      slices.push({ x, y, width, height });
-    }
+function updateSlicePreview(verticalLines, horizontalLines) {
+  // 清除之前的定时器
+  if (updatePreviewTimer) {
+    clearTimeout(updatePreviewTimer);
   }
 
-  // 更新提示信息
-  showMessage(`当前切割方案：${slices.length} 个切片`);
+  // 使用防抖延迟更新提示信息
+  updatePreviewTimer = setTimeout(() => {
+    // 更新切片信息
+    const slices = [];
+    
+    // 添加图片边界
+    verticalLines.unshift(0);
+    verticalLines.push(currentImage.width);
+    horizontalLines.unshift(0);
+    horizontalLines.push(currentImage.height);
+
+    // 计算切片
+    for (let i = 0; i < horizontalLines.length - 1; i++) {
+      for (let j = 0; j < verticalLines.length - 1; j++) {
+        const x = verticalLines[j];
+        const y = horizontalLines[i];
+        const width = verticalLines[j + 1] - x;
+        const height = horizontalLines[i + 1] - y;
+        
+        if (width < 10 || height < 10) continue;
+        
+        slices.push({ x, y, width, height });
+      }
+    }
+
+    // 更新提示信息
+    showMessage(`当前切割方案：${slices.length} 个切片`);
+  }, 300); // 300ms 的防抖延迟
 } 
